@@ -62,85 +62,95 @@ async def cmd_start(u, c): await u.message.reply_text('🤖 群管机器人\n/he
 async def cmd_help(u, c): await u.message.reply_text('/ban /unban /kick /mute /unmute /warn /unwarn /warns /pin /unpin /purge\n/welcome /verify /antispam /settings', parse_mode=ParseMode.MARKDOWN)
 
 async def cmd_ban(u, c):
-    if not await check_admin(u, c): return await u.message.reply_text('❌ 无权限')
+    if not await check_admin(u, c): return
     t = get_target(u, c)
     if not t: return await u.message.reply_text('❌ 指定用户')
     r = ' '.join(c.args[1:]) if len(c.args) > 1 else '无'
     await c.bot.ban_chat_member(u.effective_chat.id, t)
-    await u.message.reply_text(f'✅ 封禁 `{t}`\n原因: {r}', parse_mode=ParseMode.MARKDOWN)
+    msg = await u.message.reply_text('✅ 封禁 `' + str(t) + '`\n原因: ' + r, parse_mode=ParseMode.MARKDOWN)
+    c.job_queue.run_once(lambda ctx: ctx.bot.delete_message(u.effective_chat.id, msg.message_id), 180)
     await log_action(c, u.effective_chat.id, '封禁', u.effective_user, r)
 
 async def cmd_unban(u, c):
-    if not await check_admin(u, c): return await u.message.reply_text('❌ 无权限')
+    if not await check_admin(u, c): return
     t = get_target(u, c)
     if not t: return await u.message.reply_text('❌ 指定用户')
     await c.bot.unban_chat_member(u.effective_chat.id, t)
-    await u.message.reply_text(f'✅ 解封 `{t}`', parse_mode=ParseMode.MARKDOWN)
+    msg = await u.message.reply_text('✅ 解封 `' + str(t) + '`', parse_mode=ParseMode.MARKDOWN)
+    c.job_queue.run_once(lambda ctx: ctx.bot.delete_message(u.effective_chat.id, msg.message_id), 180)
 
 async def cmd_kick(u, c):
-    if not await check_admin(u, c): return await u.message.reply_text('❌ 无权限')
+    if not await check_admin(u, c): return
     t = get_target(u, c)
     if not t: return await u.message.reply_text('❌ 指定用户')
     await c.bot.ban_chat_member(u.effective_chat.id, t)
     await asyncio.sleep(1)
     await c.bot.unban_chat_member(u.effective_chat.id, t)
-    await u.message.reply_text(f'✅ 踢出 `{t}`', parse_mode=ParseMode.MARKDOWN)
+    msg = await u.message.reply_text('✅ 踢出 `' + str(t) + '`', parse_mode=ParseMode.MARKDOWN)
+    c.job_queue.run_once(lambda ctx: ctx.bot.delete_message(u.effective_chat.id, msg.message_id), 180)
 
 async def cmd_mute(u, c):
-    if not await check_admin(u, c): return await u.message.reply_text('❌ 无权限')
+    if not await check_admin(u, c): return
     t, ts = get_target_time(u, c)
     if not t: return await u.message.reply_text('❌ 指定用户')
     d = parse_time(ts)
     un = int(time.time() + d) if d else None
     await c.bot.restrict_chat_member(u.effective_chat.id, t, ChatPermissions(can_send_messages=False), until_date=un)
     db.add_mute(t, u.effective_chat.id, time.time() + d if d else 0)
-    await u.message.reply_text(f'🔇 禁言 `{t}` {ts or "永久"}', parse_mode=ParseMode.MARKDOWN)
+    msg = await u.message.reply_text('🔇 禁言 `' + str(t) + '` ' + (ts or '永久'), parse_mode=ParseMode.MARKDOWN)
+    c.job_queue.run_once(lambda ctx: ctx.bot.delete_message(u.effective_chat.id, msg.message_id), 180)
 
 async def cmd_unmute(u, c):
-    if not await check_admin(u, c): return await u.message.reply_text('❌ 无权限')
+    if not await check_admin(u, c): return
     t = get_target(u, c)
     if not t: return await u.message.reply_text('❌ 指定用户')
     p = ChatPermissions(can_send_messages=True, can_send_media_messages=True, can_send_other_messages=True, can_add_web_page_previews=True)
     await c.bot.restrict_chat_member(u.effective_chat.id, t, p)
     db.remove_mute(t, u.effective_chat.id)
-    await u.message.reply_text(f'🔊 解禁 `{t}`', parse_mode=ParseMode.MARKDOWN)
+    msg = await u.message.reply_text('🔊 解禁 `' + str(t) + '`', parse_mode=ParseMode.MARKDOWN)
+    c.job_queue.run_once(lambda ctx: ctx.bot.delete_message(u.effective_chat.id, msg.message_id), 180)
 
 async def cmd_warn(u, c):
-    if not await check_admin(u, c): return await u.message.reply_text('❌ 无权限')
+    if not await check_admin(u, c): return
     t = get_target(u, c)
     if not t: return await u.message.reply_text('❌ 指定用户')
     r = ' '.join(c.args[1:]) if len(c.args) > 1 else '无'
     n = db.add_warn(t, u.effective_chat.id)
-    txt = f'⚠️ `{t}` 警告 ({n}/{config.MAX_WARNS})\n原因: {r}'
+    txt = '⚠️ `' + str(t) + '` 警告 (' + str(n) + '/' + str(config.MAX_WARNS) + ')\n原因: ' + r
     if n >= config.MAX_WARNS:
         await c.bot.ban_chat_member(u.effective_chat.id, t)
         db.reset_warns(t, u.effective_chat.id)
         txt += '\n🚫 已封禁'
-    await u.message.reply_text(txt, parse_mode=ParseMode.MARKDOWN)
-    await log_action(c, u.effective_chat.id, '警告', u.effective_user, f'{r} ({n})')
+    msg = await u.message.reply_text(txt, parse_mode=ParseMode.MARKDOWN)
+    c.job_queue.run_once(lambda ctx: ctx.bot.delete_message(u.effective_chat.id, msg.message_id), 180)
+    await log_action(c, u.effective_chat.id, '警告', u.effective_user, r + ' (' + str(n) + ')')
 
 async def cmd_unwarn(u, c):
-    if not await check_admin(u, c): return await u.message.reply_text('❌ 无权限')
+    if not await check_admin(u, c): return
     t = get_target(u, c)
     if not t: return await u.message.reply_text('❌ 指定用户')
     db.reset_warns(t, u.effective_chat.id)
-    await u.message.reply_text(f'✅ 已清除 `{t}` 警告', parse_mode=ParseMode.MARKDOWN)
+    msg = await u.message.reply_text('✅ 已清除 `' + str(t) + '` 警告', parse_mode=ParseMode.MARKDOWN)
+    c.job_queue.run_once(lambda ctx: ctx.bot.delete_message(u.effective_chat.id, msg.message_id), 180)
 
 async def cmd_warns(u, c):
     t = get_target(u, c) or u.effective_user.id
     n = db.get_warns(t, u.effective_chat.id)
-    await u.message.reply_text(f'⚠️ `{t}` 警告: {n}/{config.MAX_WARNS}', parse_mode=ParseMode.MARKDOWN)
+    msg = await u.message.reply_text('⚠️ `' + str(t) + '` 警告: ' + str(n) + '/' + str(config.MAX_WARNS), parse_mode=ParseMode.MARKDOWN)
+    c.job_queue.run_once(lambda ctx: ctx.bot.delete_message(u.effective_chat.id, msg.message_id), 180)
 
 async def cmd_pin(u, c):
-    if not await check_admin(u, c): return await u.message.reply_text('❌ 无权限')
+    if not await check_admin(u, c): return
     if not u.message.reply_to_message: return await u.message.reply_text('❌ 回复消息')
     await c.bot.pin_chat_message(u.effective_chat.id, u.message.reply_to_message.message_id)
-    await u.message.reply_text('📌 已置顶')
+    msg = await u.message.reply_text('📌 已置顶')
+    c.job_queue.run_once(lambda ctx: ctx.bot.delete_message(u.effective_chat.id, msg.message_id), 180)
 
 async def cmd_unpin(u, c):
-    if not await check_admin(u, c): return await u.message.reply_text('❌ 无权限')
+    if not await check_admin(u, c): return
     await c.bot.unpin_chat_message(u.effective_chat.id)
-    await u.message.reply_text('📌 已取消置顶')
+    msg = await u.message.reply_text('📌 已取消置顶')
+    c.job_queue.run_once(lambda ctx: ctx.bot.delete_message(u.effective_chat.id, msg.message_id), 180)
 
 async def cmd_purge(u, c):
     if not await check_admin(u, c): return await u.message.reply_text('❌ 无权限')
@@ -325,14 +335,17 @@ async def check_spam(u, c):
 
 async def cmd_settings(u, c):
     s = db.get_settings(u.effective_chat.id)
-    await u.message.reply_text(f'⚙️ 设置\n欢迎: {"✅" if s.get("welcome_enabled") else "❌"}\n验证: {"✅" if s.get("verify_enabled") else "❌"}\n反垃圾: {"✅" if s.get("antispam_enabled") else "❌"}\n最大警告: {config.MAX_WARNS}', parse_mode=ParseMode.MARKDOWN)
+    txt = '⚙️ 设置\n欢迎: ' + ('✅' if s.get('welcome_enabled') else '❌') + '\n验证: ' + ('✅' if s.get('verify_enabled') else '❌') + '\n反垃圾: ' + ('✅' if s.get('antispam_enabled') else '❌') + '\n最大警告: ' + str(config.MAX_WARNS)
+    msg = await u.message.reply_text(txt, parse_mode=ParseMode.MARKDOWN)
+    c.job_queue.run_once(lambda ctx: ctx.bot.delete_message(u.effective_chat.id, msg.message_id), 180)
 
 async def toggle(u, c, k):
-    if not await check_admin(u, c): return await u.message.reply_text('❌ 无权限')
+    if not await check_admin(u, c): return
     s = db.get_settings(u.effective_chat.id)
     v = 0 if s.get(k) else 1
     db.update_setting(u.effective_chat.id, k, v)
-    await u.message.reply_text(f'✅ {"开启" if v else "关闭"}')
+    msg = await u.message.reply_text('✅ ' + ('开启' if v else '关闭'))
+    c.job_queue.run_once(lambda ctx: ctx.bot.delete_message(u.effective_chat.id, msg.message_id), 180)
 
 def main():
     global db
