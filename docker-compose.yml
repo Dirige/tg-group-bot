@@ -1,0 +1,16 @@
+services:
+  tg-group-bot:
+    build: .
+    container_name: tg-group-bot
+    restart: unless-stopped
+    volumes:
+      - ./data:/app/data
+    environment:
+      - BOT_TOKEN=${BOT_TOKEN}
+      - ADMIN_IDS=${ADMIN_IDS}
+      - LOG_CHAT_ID=${LOG_CHAT_ID:-0}
+      - VERIFY_TIMEOUT=120
+      - MAX_WARNS=3
+      - BANNED_WORDS=${BANNED_WORDS:-}
+      - BAN_LINKS=true
+      - DB_PATH=/app/data/bot.db
