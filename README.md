@@ -47,7 +47,14 @@ cp config.example.json data/config.json
   "ban_links": true,
   "ban_forwards": false,
   "welcome_msg": "👋 欢迎 {name} 加入群组！\\n\\n请在 {timeout} 秒内点击验证，否则将被移除。",
-  "proxy": ""
+  "proxy": "",
+  "db": {
+    "host": "mysql",
+    "port": 3306,
+    "user": "root",
+    "password": "your_password",
+    "database": "tg-group-bot"
+  }
 }
 ```
 
@@ -77,6 +84,11 @@ docker logs -f tg-group-bot
 | ban_forwards | 否 | 拦截转发消息 | false |
 | welcome_msg | 否 | 欢迎消息模板，支持 {name} {timeout} | 默认模板 |
 | proxy | 否 | 代理地址，如 socks5h://host:port | 空 |
+| db.host | 否 | MySQL 主机地址 | 127.0.0.1 |
+| db.port | 否 | MySQL 端口 | 3306 |
+| db.user | 否 | MySQL 用户名 | root |
+| db.password | 否 | MySQL 密码 | 空 |
+| db.database | 否 | 数据库名 | tg-group-bot |
 
 ## 命令
 
@@ -119,6 +131,37 @@ docker logs -f tg-group-bot
 当触发广告警告时，日志通知会附带操作按钮：
 - ✅ **清除警告** — 重置该用户的警告计数和命中计数
 - 🚫 **封禁用户** — 直接封禁该用户
+
+## 数据库
+
+项目使用 **MySQL** 存储数据，表名和字段名全部使用中文，自动建库建表。
+
+| 表名 | 用途 |
+|------|------|
+| 警告记录 | 用户警告次数 |
+| 待验证 | 入群验证码信息 |
+| 禁言用户 | 禁言状态 |
+| 群组设置 | 各群组独立开关 |
+| 垃圾命中 | 广告关键词命中记录 |
+| 全局黑名单 | 被封禁用户 |
+
+### Docker 网络
+
+如果 MySQL 运行在另一个 Docker 容器中，需要将本容器和 MySQL 容器加入同一 Docker 网络：
+
+```yaml
+# docker-compose.yml 中已配置
+services:
+  tg-group-bot:
+    networks:
+      - default
+      - panel-net  # 连接 MySQL 所在网络
+
+networks:
+  panel-net:
+    external: true
+    name: 1panel-network  # 替换为你的 MySQL 网络名
+```
 
 ## 许可证
 

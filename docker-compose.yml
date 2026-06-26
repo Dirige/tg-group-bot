@@ -3,13 +3,13 @@ services:
     build: .
     container_name: tg-group-bot
     restart: unless-stopped
-    network_mode: host
-    environment:
-      - TZ=Asia/Shanghai
     volumes:
-      - ./data:/app/data
-      - ./bot.py:/app/bot.py
-      - ./filters.py:/app/filters.py
-      - ./captcha.py:/app/captcha.py
-      - ./database.py:/app/database.py
-      - ./config.py:/app/config.py
+      - ./data:/app/data:ro
+    networks:
+      - default
+      - panel-net
+
+networks:
+  panel-net:
+    external: true
+    name: 1panel-network

@@ -76,8 +76,8 @@ async def log_action(context, cid, action, user=None, reason=''):
     if user and '警告' in action:
         keyboard = InlineKeyboardMarkup([
             [
-                InlineKeyboardButton('✅ 清除警告', callback_data=f'admin_unwarn:{cid}:{user.id}'),
-                InlineKeyboardButton('🚫 封禁用户', callback_data=f'admin_ban:{cid}:{user.id}'),
+                InlineKeyboardButton('✅ 清除警告', callback_data=f'admin_unwarn:{user.id}:{cid}'),
+                InlineKeyboardButton('🚫 封禁用户', callback_data=f'admin_ban:{user.id}:{cid}'),
             ]
         ])
     try: await context.bot.send_message(config.LOG_CHAT_ID, t, parse_mode=ParseMode.MARKDOWN, reply_markup=keyboard)
@@ -446,6 +446,9 @@ async def check_spam(u, c):
     r = check_message(u.message)
     if not r: return
     level, words = r
+    # warning: only trigger when 2+ words hit simultaneously
+    if level == 'warning' and len(words) < 2:
+        return
     logger.info(f'SPAM: user={u.effective_user.id} chat={u.effective_chat.id} level={level} words={words[:3]}')
     try: await u.message.delete()
     except: pass
@@ -453,31 +456,21 @@ async def check_spam(u, c):
     if level == 'critical':
         await c.bot.ban_chat_member(u.effective_chat.id, u.effective_user.id)
         db.add_to_blacklist(u.effective_user.id, f'发送严重违规内容: {word_str}', u.effective_chat.id)
-        m = await c.bot.send_message(u.effective_chat.id, f'🚫 {u.effective_user.first_name} 发送严重违规内容\n命中: {word_str}\n已封禁并加入全局黑名单')
-        await log_action(c, u.effective_chat.id, '🚫 广告封禁', u.effective_user, f'命中: {word_str}')
+        m = await c.bot.send_message(u.effective_chat.id, f'\U0001f6ab {u.effective_user.first_name} 发送严重违规内容\n命中: {word_str}\n已封禁并加入全局黑名单')
+        await log_action(c, u.effective_chat.id, '\U0001f6ab 广告封禁', u.effective_user, f'命中: {word_str}')
         c.job_queue.run_once(lambda ctx: ctx.bot.delete_message(u.effective_chat.id, m.message_id), 10)
     else:
-        # 累计命中次数，2 次才正式警告
-        hit_count = db.add_spam_hit(u.effective_user.id, u.effective_chat.id)
-        if hit_count < 2:
-            # 第一次命中：静默删除 + 通知管理员
-            await log_action(c, u.effective_chat.id, '⚠️ 广告警告', u.effective_user, f'命中: {word_str} ({hit_count}/2 待确认)')
-            m = await c.bot.send_message(u.effective_chat.id, f'⚠️ {u.effective_user.first_name} 疑似违规\n命中: {word_str}\n消息已删除，请注意发言')
-            c.job_queue.run_once(lambda ctx: ctx.bot.delete_message(u.effective_chat.id, m.message_id), 5)
+        n = db.add_warn(u.effective_user.id, u.effective_chat.id)
+        txt = f'\u26a0\ufe0f {u.effective_user.first_name} 违规内容\n命中: {word_str}\n警告: {n}/{config.MAX_WARNS}'
+        if n >= config.MAX_WARNS:
+            await c.bot.ban_chat_member(u.effective_chat.id, u.effective_user.id)
+            db.reset_warns(u.effective_user.id, u.effective_chat.id)
+            txt += '\n\U0001f6ab 累计警告达上限，已封禁'
+            await log_action(c, u.effective_chat.id, '\U0001f6ab 累计警告封禁', u.effective_user, f'命中: {word_str}')
         else:
-            # 第二次命中：正式警告 + 重置计数
-            db.reset_spam_hits(u.effective_user.id, u.effective_chat.id)
-            n = db.add_warn(u.effective_user.id, u.effective_chat.id)
-            txt = f'⚠️ {u.effective_user.first_name} 违规内容\n命中: {word_str}\n警告: {n}/{config.MAX_WARNS}'
-            if n >= config.MAX_WARNS:
-                await c.bot.ban_chat_member(u.effective_chat.id, u.effective_user.id)
-                db.reset_warns(u.effective_user.id, u.effective_chat.id)
-                txt += '\n🚫 累计警告达上限，已封禁'
-                await log_action(c, u.effective_chat.id, '🚫 累计警告封禁', u.effective_user, f'命中: {word_str}')
-            else:
-                await log_action(c, u.effective_chat.id, '⚠️ 广告警告', u.effective_user, f'命中: {word_str} ({n}/{config.MAX_WARNS})')
-            m = await c.bot.send_message(u.effective_chat.id, txt)
-            c.job_queue.run_once(lambda ctx: ctx.bot.delete_message(u.effective_chat.id, m.message_id), 5)
+            await log_action(c, u.effective_chat.id, '\u26a0\ufe0f 广告警告', u.effective_user, f'命中: {word_str} ({n}/{config.MAX_WARNS})')
+        m = await c.bot.send_message(u.effective_chat.id, txt)
+        c.job_queue.run_once(lambda ctx: ctx.bot.delete_message(u.effective_chat.id, m.message_id), 5)
 
 async def cmd_settings(u, c):
     s = db.get_settings(u.effective_chat.id)
@@ -575,7 +568,7 @@ async def cmd_unlock(u, c):
 
 def main():
     global db
-    db = Database(config.DB_PATH)
+    db = Database(config.DB_CONFIG)
 
     proxy_url = config.PROXY
     builder = Application.builder().token(config.BOT_TOKEN)

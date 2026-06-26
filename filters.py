@@ -72,8 +72,6 @@ def check_message(message):
     if critical_hits:
         return ('critical', critical_hits)
 
-    if len(warning_hits) >= 3:
-        return ('critical', warning_hits)
 
     if warning_hits:
         return ('warning', warning_hits)
