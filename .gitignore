@@ -1,6 +1,4 @@
 __pycache__/
 *.pyc
-.env
-data/
-*.db
-*.tar.gz
+data/bot.db
+*.bak
