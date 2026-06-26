@@ -38,6 +38,19 @@ class Database:
                 verify_enabled INTEGER DEFAULT 1,
                 antispam_enabled INTEGER DEFAULT 1
             );
+            CREATE TABLE IF NOT EXISTS spam_hits (
+                user_id INTEGER,
+                chat_id INTEGER,
+                hit_count INTEGER DEFAULT 0,
+                last_hit_time REAL DEFAULT 0,
+                PRIMARY KEY (user_id, chat_id)
+            );
+            CREATE TABLE IF NOT EXISTS global_blacklist (
+                user_id INTEGER PRIMARY KEY,
+                reason TEXT DEFAULT '',
+                added_at REAL,
+                source_chat_id INTEGER DEFAULT 0
+            );
         """)
         self.conn.commit()
     
@@ -153,8 +166,92 @@ class Database:
         return dict(row)
     
     def update_setting(self, chat_id, key, value):
+        allowed = {'welcome_enabled', 'verify_enabled', 'antispam_enabled'}
+        if key not in allowed:
+            return
         self.conn.execute(
-            f'UPDATE group_settings SET {key}=? WHERE chat_id=?',
+            f'UPDATE group_settings SET [{key}]=? WHERE chat_id=?',
             (value, chat_id)
         )
         self.conn.commit()
+
+    def add_to_blacklist(self, user_id, reason='', source_chat_id=0):
+        self.conn.execute(
+            'INSERT OR REPLACE INTO global_blacklist (user_id, reason, added_at, source_chat_id) VALUES (?, ?, ?, ?)',
+            (user_id, reason, time.time(), source_chat_id)
+        )
+        self.conn.commit()
+
+    def remove_from_blacklist(self, user_id):
+        self.conn.execute(
+            'DELETE FROM global_blacklist WHERE user_id=?',
+            (user_id,)
+        )
+        self.conn.commit()
+
+    def is_blacklisted(self, user_id):
+        row = self.conn.execute(
+            'SELECT * FROM global_blacklist WHERE user_id=?',
+            (user_id,)
+        ).fetchone()
+        return dict(row) if row else None
+
+    def get_blacklist(self, limit=50):
+        rows = self.conn.execute(
+            'SELECT * FROM global_blacklist ORDER BY added_at DESC LIMIT ?',
+            (limit,)
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def search_blacklist(self, keyword):
+        rows = self.conn.execute(
+            'SELECT * FROM global_blacklist WHERE CAST(user_id AS TEXT) LIKE ? OR reason LIKE ?',
+            (f'%{keyword}%', f'%{keyword}%')
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_all_users(self):
+        rows = self.conn.execute(
+            'SELECT DISTINCT user_id FROM warnings UNION SELECT DISTINCT user_id FROM pending_verify UNION SELECT DISTINCT user_id FROM muted_users UNION SELECT DISTINCT user_id FROM global_blacklist'
+        ).fetchall()
+        return [r['user_id'] for r in rows]
+
+    def get_user_info(self, user_id):
+        result = {}
+        warns = self.conn.execute('SELECT * FROM warnings WHERE user_id=?', (user_id,)).fetchall()
+        result['warnings'] = [dict(r) for r in warns]
+        pending = self.conn.execute('SELECT * FROM pending_verify WHERE user_id=?', (user_id,)).fetchall()
+        result['pending_verify'] = [dict(r) for r in pending]
+        muted = self.conn.execute('SELECT * FROM muted_users WHERE user_id=?', (user_id,)).fetchall()
+        result['muted'] = [dict(r) for r in muted]
+        blacklisted = self.conn.execute('SELECT * FROM global_blacklist WHERE user_id=?', (user_id,)).fetchone()
+        result['blacklisted'] = dict(blacklisted) if blacklisted else None
+        return result
+
+
+    def add_spam_hit(self, user_id, chat_id):
+        self.conn.execute(
+            "INSERT INTO spam_hits (user_id, chat_id, hit_count, last_hit_time) VALUES (?, ?, 1, ?) "
+            "ON CONFLICT(user_id, chat_id) DO UPDATE SET hit_count = hit_count + 1, last_hit_time = ?",
+            (user_id, chat_id, time.time(), time.time())
+        )
+        self.conn.commit()
+        row = self.conn.execute(
+            "SELECT hit_count FROM spam_hits WHERE user_id=? AND chat_id=?",
+            (user_id, chat_id)
+        ).fetchone()
+        return row["hit_count"] if row else 0
+
+    def reset_spam_hits(self, user_id, chat_id):
+        self.conn.execute(
+            "DELETE FROM spam_hits WHERE user_id=? AND chat_id=?",
+            (user_id, chat_id)
+        )
+        self.conn.commit()
+
+    def get_spam_hits(self, user_id, chat_id):
+        row = self.conn.execute(
+            "SELECT hit_count FROM spam_hits WHERE user_id=? AND chat_id=?",
+            (user_id, chat_id)
+        ).fetchone()
+        return row["hit_count"] if row else 0
