@@ -1,0 +1,12 @@
+{
+  "bot_token": "你的Bot Token",
+  "admin_ids": [123456789],
+  "log_chat_id": 0,
+  "verify_timeout": 120,
+  "max_warns": 3,
+  "banned_words": [],
+  "ban_links": true,
+  "ban_forwards": false,
+  "welcome_msg": "👋 欢迎 {name} 加入群组！\n\n请在 {timeout} 秒内点击验证，否则将被移除。",
+  "proxy": ""
+}
